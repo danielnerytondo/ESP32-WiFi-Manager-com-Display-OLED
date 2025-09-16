@@ -46,7 +46,7 @@ Projeto completo de configuração WiFi automática para ESP32 com display OLED 
 
 \`\`\`bash
 # Clonar repositório
-git clone https://github.com/MOCBUS/ESP32-WiFi-Manager-OLED.git
+git clone https://github.com/danielnerytondo/ESP32-WiFi-Manager-com-Display-OLED.git
 cd ESP32-WiFi-Manager-OLED
 
 # Abrir no VSCode
