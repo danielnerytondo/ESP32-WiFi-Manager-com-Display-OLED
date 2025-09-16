@@ -1,15 +1,14 @@
-#include <Arduino.h>
-#include <WiFi.h>
 #include <WiFiManager.h>
-
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SH110X.h>
+#include <Adafruit_SSD1306.h>
+#include <TinyGPSPlus.h>  // Nome correto da biblioteca
+#include <HardwareSerial.h>
 
 // DEFINIÇÕES DE PINOS
 #define PIN_AP 23
-#define LED_BUILTIN 2  // LED interno do ESP32 (GPIO2)
+#define LED_BUILTIN 2
 
 // DEFINIÇÕES
 #define APERTADO LOW
@@ -19,106 +18,200 @@
 #define SCREEN_ADDRESS 0x3C
 #define OLED_RESET -1
 
-Adafruit_SH1106G tela(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// Objetos
+Adafruit_SSD1306 tela(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+TinyGPSPlus gps;
+HardwareSerial SerialGPS(2); // UART2 do ESP32
 
-// Variáveis para WiFiManager
-char nomeWifi[40] = "ESP32_Config";
-char senhaWifi[40] = "12345678";
+// DECLARAÇÃO DE VARIÁVEIS
+char nomeWifi[15] = "ESP32_GPS";
+char senhaWifi[15] = "12345678";
 
-void setupDisplay() {
-  if (!tela.begin(SCREEN_ADDRESS, true)) {
-    Serial.println("Display OLED não encontrado!");
-    while (true);
+// Variáveis GPS
+float latitude = 0;
+float longitude = 0;
+int satelites = 0;
+bool gpsValido = false;
+
+bool botaoPressionado() {
+  if (digitalRead(PIN_AP) == APERTADO) {
+    delay(50);
+    if (digitalRead(PIN_AP) == APERTADO) {
+      return true;
+    }
   }
-  tela.clearDisplay();
-  tela.setTextSize(1);
-  tela.setTextColor(SH110X_WHITE);
-  tela.display();
+  return false;
 }
 
-void mostrarMensagem(String mensagem, int tamanhoTexto = 1) {
+void mostrarMensagem(String mensagem, int tamanho = 1) {
   tela.clearDisplay();
-  tela.setTextSize(tamanhoTexto);
+  tela.setTextSize(tamanho);
+  tela.setTextColor(SSD1306_WHITE);
   tela.setCursor(0, 0);
   tela.println(mensagem);
   tela.display();
 }
 
-void configModoAP() {
-  tela.clearDisplay();
-  tela.setCursor(0, 0);
-  tela.setTextSize(1);
-  tela.println("Modo Configuracao");
-  tela.println("Conecte-se ao:");
-  tela.println(nomeWifi);
-  tela.println("IP: 192.168.4.1");
-  tela.display();
+void atualizarGPS() {
+  // Processar dados do GPS
+  while (SerialGPS.available() > 0) {
+    char c = SerialGPS.read();
+    if (gps.encode(c)) {
+      if (gps.location.isValid()) {
+        latitude = gps.location.lat();
+        longitude = gps.location.lng();
+        satelites = gps.satellites.value();
+        gpsValido = true;
+        
+        // Debug no Serial Monitor
+        Serial.print("Lat: ");
+        Serial.print(latitude, 6);
+        Serial.print(" Lon: ");
+        Serial.print(longitude, 6);
+        Serial.print(" Sats: ");
+        Serial.println(satelites);
+      } else {
+        gpsValido = false;
+        Serial.println("GPS: Aguardando fixação...");
+      }
+    }
+  }
 }
 
-void configModoConectado() {
+void mostrarInfoCompleta() {
   tela.clearDisplay();
-  tela.setCursor(0, 0);
   tela.setTextSize(1);
-  tela.println("WiFi Conectado!");
+  tela.setTextColor(SSD1306_WHITE);
+  
+  // Linha 1: Status WiFi
+  tela.setCursor(0, 0);
+  if (WiFi.status() == WL_CONNECTED) {
+    tela.print("WiFi: ");
+    tela.print(WiFi.SSID());
+  } else {
+    tela.print("Modo AP: ");
+    tela.print(nomeWifi);
+  }
+  
+  // Linha 2: IP Address
+  tela.setCursor(0, 10);
   tela.print("IP: ");
-  tela.println(WiFi.localIP());
+  if (WiFi.status() == WL_CONNECTED) {
+    tela.print(WiFi.localIP());
+  } else {
+    tela.print("192.168.4.1");
+  }
+  
+  // Linha 3: Latitude
+  tela.setCursor(0, 20);
+  if (gpsValido) {
+    tela.print("Lat: ");
+    tela.print(latitude, 6);
+  } else {
+    tela.print("GPS: Buscando sats");
+  }
+  
+  // Linha 4: Longitude
+  tela.setCursor(0, 30);
+  if (gpsValido) {
+    tela.print("Lon: ");
+    tela.print(longitude, 6);
+  } else {
+    tela.print("Sats: ");
+    tela.print(satelites);
+  }
+  
+  // Linha 5: Satélites
+  tela.setCursor(0, 40);
+  tela.print("Satelites: ");
+  tela.print(satelites);
+  
+  // Linha 6: Status GPS
+  tela.setCursor(0, 50);
+  if (gpsValido) {
+    tela.print("GPS: FIXO ");
+    if (gps.time.isValid()) {
+      tela.print("| ");
+      if (gps.time.hour() < 10) tela.print("0");
+      tela.print(gps.time.hour());
+      tela.print(":");
+      if (gps.time.minute() < 10) tela.print("0");
+      tela.print(gps.time.minute());
+    }
+  } else {
+    tela.print("GPS: BUSCANDO");
+  }
+  
   tela.display();
 }
 
 void setup() {
-  Serial.begin(115200);
   pinMode(PIN_AP, INPUT_PULLUP);
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
 
+  Serial.begin(115200);
+  
+  // Inicializar GPS - UART2 nos pinos 16(RX), 17(TX)
+  SerialGPS.begin(9600, SERIAL_8N1, 16, 17);
+  Serial.println("Inicializando GPS...");
+  
   // Inicializar display
-  setupDisplay();
-  mostrarMensagem("Iniciando...", 2);
+  if(!tela.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+    Serial.println("Falha no display!");
+    while(1);
+  }
+  
+  mostrarMensagem("Iniciando GPS...", 1);
   delay(2000);
 
-  // WiFiManager
-  WiFiManager wm;
-
-  // Verificar se botão de reset está pressionado
-  if (digitalRead(PIN_AP) == APERTADO) {
-    mostrarMensagem("Resetando WiFi...", 1);
-    Serial.println("Resetando configurações WiFi...");
-    delay(3000);
+  // Verificar botão de reset
+  if (botaoPressionado()) {
+    mostrarMensagem("Reset WiFi?", 1);
+    delay(2000);
+    mostrarMensagem("3...", 2);
+    delay(1000);
+    mostrarMensagem("2...", 2);
+    delay(1000);
+    mostrarMensagem("1...", 2);
+    delay(1000);
+    
+    WiFiManager wm;
     wm.resetSettings();
-    mostrarMensagem("Reiniciando...", 1);
+    
+    mostrarMensagem("Reiniciando", 1);
     delay(2000);
     ESP.restart();
+    while(1);
   }
 
-  // Configurar timeout do portal
+  // Configurar WiFiManager
+  WiFiManager wm;
   wm.setConfigPortalTimeout(180);
 
-  mostrarMensagem("Conectando...", 1);
+  mostrarMensagem("Conectando WiFi", 1);
 
   // Tentar conectar automaticamente
-  bool res;
-  res = wm.autoConnect(nomeWifi, senhaWifi);
+  bool res = wm.autoConnect(nomeWifi, senhaWifi);
 
   if (!res) {
-    Serial.println("Falha na conexão ou portal ativo");
-    configModoAP();
-
-    // Portal configuracao ativo
-    while (true) {
-      digitalWrite(LED_BUILTIN, millis() % 500 < 250); // LED piscando
-      delay(10);
-    }
-  } else {
-    // Conectado com sucesso
-    Serial.println("Conectado!");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-
-    configModoConectado();
+    Serial.println("Modo AP ativo");
+  }
+  else {
+    Serial.println("WiFi Conectado!");
   }
 }
 
 void loop() {
-  // Piscar LED para indicar funcionamento
-  digitalWrite(LED_BUILTIN, millis() % 1000 < 500);
+  atualizarGPS();
+  mostrarInfoCompleta();
+  
+  // Piscar LED baseado no status
+  if (gpsValido) {
+    digitalWrite(LED_BUILTIN, millis() % 1000 < 100); // Pisca rápido com GPS válido
+  } else {
+    digitalWrite(LED_BUILTIN, millis() % 1000 < 500); // Pisca normal
+  }
+  
   delay(100);
 }
