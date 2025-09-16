@@ -1,4 +1,4 @@
-# Criar o arquivo README.md
+
 echo "# ESP32 WiFi Manager com Display OLED SH1106
 
 ![ESP32](https://img.shields.io/badge/ESP32-DevKit--v1-blue.svg)
