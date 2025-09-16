@@ -34,7 +34,7 @@ Projeto completo de configuração WiFi automática para ESP32 com display OLED 
 | Botão AP | GPIO 23 | Com pull-up interno |
 | LED Interno | GPIO 2 | Já incluído no ESP32 |
 
-![Esquema de Ligação](https://raw.githubusercontent.com/danielnerytondo/ESP32-WiFi-Manager-OLED/main/wiring_diagram.png)
+![Esquema de Ligação](https://github.com/danielnerytondo/ESP32-WiFi-Manager-com-Display-OLED/blob/main/wiring_diagram.png)
 
 ## 🚀 Instalação
 
